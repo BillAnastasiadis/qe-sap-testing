@@ -1,0 +1,71 @@
+---
+- name: Prepare HANA Action - Dump cluster status (crm status)
+  command: crm status
+  become: true
+  register: crm_initial
+  changed_when: false
+
+- name: Prepare HANA Action - Assert this node is currently MASTER
+  fail:
+    msg: "{{ inventory_hostname }} is NOT in MASTER mode – aborting test"
+  when: "'Master' not in crm_initial.stdout"
+
+- name: Prepare HANA Action - Wait cluster idle
+  command: cs_wait_for_idle --sleep 5
+  register: idle
+  retries: "{{ cs_wait_timeout // 5 }}"
+  delay: 5
+  become: true
+  until: idle.rc == 0
+
+- name: HANA Action - Stop
+  shell: "sudo -iu {{ sap_sidadm }} HDB stop"
+  become: true
+  when: action == 'stop'
+
+- name: HANA Action - Kill
+  shell: "sudo -iu {{ sap_sidadm }} HDB kill -x"
+  become: true
+  when: action == 'kill'
+
+- name: HANA Action - Crash
+  shell: "echo b > /proc/sysrq-trigger &"
+  async: 0
+  poll: 0
+  become: true
+  when: action == 'crash'
+
+- name: Post HANA Action - Wait SSH back (stop/crash)
+  wait_for:
+    port: 22
+    state: started
+    host: "{{ inventory_hostname }}"
+    delay: 15
+    timeout: 900
+  become: true
+  when: action in ['crash', 'stop']
+
+- name: Post HANA Action - Re-enable system replication
+  shell: |
+    sudo -iu {{ sap_sidadm }} \
+      hdbnsutil -sr_register \
+      --online \
+      --name={{ site_name }} \
+      --remoteHost={{ peer_site }} \
+      --remoteInstance={{ hana_instance_number }} \
+      --replicationMode=sync \
+      --operationMode=logreplay
+  become: false
+  become_user: "{{ sap_sidadm }}"
+
+- name: Post HANA Action - crm cleanup (start resources)
+  become: true
+  command: crm resource cleanup
+
+- name: Post HANA Action - Wait cluster idle after cleanup
+  become: true
+  command: cs_wait_for_idle --sleep 5
+  register: settle
+  retries: "{{ cluster_settle_retries }}"
+  delay: "{{ cluster_settle_delay }}"
+  until: settle.rc == 0
