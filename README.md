@@ -30,9 +30,11 @@ NODE=<node_name>
 After you set the appropriate variables, run the hana_sr_takeover playbook:
 
 ```bash
-ansible-playbook -i /<deployment_repo_path>/qe-sap-deployment/terraform/<your_csp>/inventory.yaml playbooks/hana_sr_takeover.yml -u <cloud_admin_user> -e "@/<testing_repo_path>/qe-sap-testing/playbooks/vars/all.yml" -e "action=$ACTION node_name=$NODE site_name=$SITE sap_sidadm=$SAP_SIDADM hana_instance_number=$INSTANCE_ID" -vv
+ansible-playbook -i /<deployment_repo_path>/qe-sap-deployment/terraform/<your_csp>/inventory.yaml playbooks/hana_sr_takeover.yml -u <cloud_admin_user> -e "@/<testing_repo_path>/qe-sap-testing/playbooks/vars/all.yml" -e "action=$ACTION node_name=$NODE site_name=$SITE sap_sidadm=$SAP_SIDADM instance_id=$INSTANCE_ID" -vv
 ```
+
+To run the easy way with the script, look at the script description (TBD)
 
 ## Contributing
 
-Pull requests are welcome.
+Pull requests welcome.

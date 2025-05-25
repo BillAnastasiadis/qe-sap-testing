@@ -39,6 +39,7 @@
       - prim_count | int == 1
       - sok_count  | int == (host_total | int) - 1
     fail_msg: "Topology does not show 1 PRIM and rest SOK — PRIM={{ prim_count }} SOK={{ sok_count }} HOSTS={{ host_total }}"
+    success_msg: "Topology shows 1 PRIM and the rest SOK"
 
 - name: Post HANA check - crm cleanup
   become: true
