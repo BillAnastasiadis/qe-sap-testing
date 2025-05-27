@@ -21,7 +21,7 @@
   until: idle.rc == 0
 
 # SBD related stuff
-- name: Configure SBD start-delay
+- name: Prepare HANA Action - Configure SBD start-delay
   become: true
   lineinfile:
     path: /etc/sysconfig/sbd
@@ -29,14 +29,14 @@
     line: "SBD_DELAY_START={{ sbd_delay_start | default('yes') }}"
   when: action == 'crash' or (action == 'stop' and csp == 'EC2')
 
-# SBD related stuff
-- name: Gather SBD-delay parameters
+- name: Prepare HANA Action - Gather SBD-delay parameters
   become: true
   shell: "{{ item.cmd }}"
   args:
     warn: false
   register: sbddelay
   changed_when: false
+  failed_when: false
   loop:
     - name: corosync_token
       cmd: "corosync-cmapctl | awk -F ' = ' '/totem.token/ {print int($2/1000)}'"
@@ -50,7 +50,7 @@
       cmd: "grep -oP '(?<=^SBD_DELAY_START=)([[:digit:]]+|yes|no)+' /etc/sysconfig/sbd"
   when: action == 'crash' or (action == 'stop' and csp == 'EC2')
 
-- name: Set SBD delay facts
+- name: Prepare HANA Action - Set SBD delay facts
   set_fact:
     corosync_token:       "{{ sbddelay.results | selectattr('item.name','==','corosync_token')       | map(attribute='stdout') | first | int }}"
     corosync_consensus:   "{{ sbddelay.results | selectattr('item.name','==','corosync_consensus')   | map(attribute='stdout') | first | int }}"
@@ -59,7 +59,7 @@
     sbd_delay_start:      "{{ sbddelay.results | selectattr('item.name','==','sbd_delay_start')      | map(attribute='stdout') | first | default('yes') }}"
   when: action == 'crash' or (action == 'stop' and csp == 'EC2')
 
-- name: Configure SBD start-delay
+- name: Prepare HANA Action - Configure SBD start-delay
   become: true
   lineinfile:
     path: /etc/sysconfig/sbd
@@ -67,14 +67,14 @@
     line: "SBD_DELAY_START={{ sbd_delay_start }}"
   when: action == 'crash' or (action == 'stop' and csp == 'EC2')
 
-- name: Create systemd drop-in for SBD timeout
+- name: Prepare HANA Action - Create systemd drop-in for SBD timeout
   become: true
   file:
     path: /etc/systemd/system/sbd.service.d
     state: directory
   when: action == 'crash' or (action == 'stop' and csp == 'EC2')
 
-- name: Write SBD timeout.conf
+- name: Prepare HANA Action - Write SBD timeout.conf
   become: true
   copy:
     dest: /etc/systemd/system/sbd.service.d/timeout.conf
@@ -87,26 +87,6 @@
         'sbd_watchdog_timeout': sbd_watchdog_timeout,
         'sbd_delay_start'     : sbd_delay_start
       } | calc_sbd_delay + 30 }}
-  when: action == 'crash' or (action == 'stop' and csp == 'EC2')
-
-- name: Pause for calculated SBD delay + 30s
-  pause:
-    seconds: "{{ {
-      'corosync_token'      : corosync_token,
-      'corosync_consensus'  : corosync_consensus,
-      'pcmk_delay_max'      : pcmk_delay_max,
-      'sbd_watchdog_timeout': sbd_watchdog_timeout,
-      'sbd_delay_start'     : sbd_delay_start
-    } | calc_sbd_delay + 30 }}"
-  when: action == 'crash' or (action == 'stop' and csp == 'EC2')
-
-- name: Wait for Pacemaker to be active
-  become: true
-  command: systemctl --no-pager is-active pacemaker
-  register: pm
-  retries: "{{ pacemaker_timeout // 15 }}"
-  delay: 15
-  until: pm.stdout == 'active'
   when: action == 'crash' or (action == 'stop' and csp == 'EC2')
 
 # HANA action (stop/kill/crash)
@@ -127,11 +107,32 @@
   poll: 0
   when: action == 'crash'
 
+# Post hana action
 - name: Post HANA Action - Wait SSH back (stop/crash)
   wait_for_connection:
     delay: 15
     timeout: 900
   when: action in ['crash','stop']
+
+- name: Prepare HANA Action - Pause for calculated SBD delay + 30s
+  pause:
+    seconds: "{{ {
+      'corosync_token'      : corosync_token,
+      'corosync_consensus'  : corosync_consensus,
+      'pcmk_delay_max'      : pcmk_delay_max,
+      'sbd_watchdog_timeout': sbd_watchdog_timeout,
+      'sbd_delay_start'     : sbd_delay_start
+    } | calc_sbd_delay + 30 }}"
+  when: action == 'crash' or (action == 'stop' and csp == 'EC2')
+
+- name: Prepare HANA Action - Wait for Pacemaker to be active
+  become: true
+  command: systemctl --no-pager is-active pacemaker
+  register: pm
+  retries: "{{ pacemaker_timeout // 15 }}"
+  delay: 15
+  until: pm.stdout == 'active'
+  when: action == 'crash' or (action == 'stop' and csp == 'EC2')
 
 - name: Post HANA Action - Re-enable system replication
   shell: |
