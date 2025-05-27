@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-qesap_test.py – helper to launch the hana SR takeover playbook manually.
+qesap_test.py – helper to launch the qe-sap test playbooks manually.
 
 Quick positional usage:
 python3 qesap_test.py <ACTION> <NODE_NAME> <SITE_NAME> <CSP> INSTANCE_ID> <INSTANCE_SID> <SAP_SIDADM>
-Order is ACTION NODE SITE CSP INSTANCE_ID INSTANCE_SID SAP_SIDADM
+Order is as depicted above for positional usage.
 
-Named options override everything:
-python3 qesap_test.py --action stop --node-name hana01 --site-name site_a --cloud-user cloudadmin \
-    --csp azure --instance-id 00 --sid HA0 --sap-sidadm ha0adm \
+Named args > positional args > env_file args:
+python3 qesap_test.py --playbook <playbook_name> --action <stop|crash|kill> --node-name <node_name> --site-name <site_name> \
+    --cloud-user <cloud_user> --csp <csp> --instance-id <instance_id> --instance_sid <instance_sid> --sap-sidadm <sap_adm_name> \
     --inventory /path/to/inventory.yaml -vv
 
 Defaults may also be provided in an *env_vars* file in the repo root:
 Format is 'key: value' pair, one per each line. Comment lines with '#'.
 cli args, if provided, override file args.
 
-A combination of file and cli args can be used.
+A combination of file and named/unnamed cli args can be used.
 
 The script automatically sets ANSIBLE_ROLES_PATH and ANSIBLE_FILTER_PLUGINS to point
  at playbooks/roles and playbooks/filter_plugins unless you explicitly pass 
@@ -30,15 +30,15 @@ import subprocess
 import sys
 
 REQUIRED = [
-    'action', 'node_name', 'site_name', 'cloud_user',
+    'playbook', 'action', 'node_name', 'site_name', 'cloud_user',
     'csp', 'instance_id', 'instance_sid', 'sap_sidadm'
 ]
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))          # …/qe-sap-testing
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # …/qe-sap-testing
 DEFAULT_ROLES  = os.path.join(REPO_ROOT, 'playbooks', 'roles')
 DEFAULT_FILTER = os.path.join(REPO_ROOT, 'playbooks', 'filter_plugins')
 DEFAULT_VARS   = os.path.join(REPO_ROOT, 'playbooks', 'vars', 'all.yml')
-PLAYBOOK       = os.path.join(REPO_ROOT, 'playbooks', 'hana_sr_takeover.yml')
+PLAYBOOK_DIR   = os.path.join(REPO_ROOT, 'playbooks')
 ENV_FILE       = os.path.join(REPO_ROOT, 'env_vars')
 
 def load_env_file(path):
@@ -61,17 +61,17 @@ def merge_vars(positional, cli_named, env_file):
     for key, val in zip(REQUIRED, positional):
         merged[key] = val
 
-    # overlay env file
+    # add env file
     merged.update(env_file)
 
-    # overlay cli named flags
+    # add cli named flags
     merged.update(cli_named)
 
-    # auto-derive SAP_SIDADM if missing
+    # create SAP_SIDADM if missing
     if not merged.get('sap_sidadm') and merged.get('instance_sid'):
         merged['sap_sidadm'] = merged['instance_sid'].lower() + 'adm'
 
-    # final validation
+    # required validation
     missing = [k for k in REQUIRED if not merged.get(k)]
     if missing:
         sys.exit(f"Missing required variables: {', '.join(missing)}")
@@ -93,6 +93,7 @@ def main():
         description=__doc__)
 
     # named options (all optional, required checked later)
+    parser.add_argument('--playbook', '-p')
     parser.add_argument('--action')
     parser.add_argument('--node-name')
     parser.add_argument('--site-name')
@@ -113,10 +114,10 @@ def main():
 
     args, unknown = parser.parse_known_args()
 
-    # cli named vars lower case to upper-case dict
+    # format cli args
     cli_named = format_vars(args)
 
-    # positional list vars
+    # positional vars
     positional = args.positional
     if len(positional) > len(REQUIRED):
         sys.exit(f"Too many positional args (got {len(positional)}, "
@@ -127,6 +128,12 @@ def main():
 
     # merge all vars respecting predecence
     combined = merge_vars(positional, cli_named, env_file_vars)
+
+    # get chosen playbook
+    pb_name = combined['playbook']
+    chosen_playbook = os.path.join(PLAYBOOK_DIR, f"{pb_name}.yml")
+    if not os.path.isfile(chosen_playbook):
+        sys.exit(f"Playbook '{pb_name}.yml' not found in {PLAYBOOK_DIR}")
 
     env = os.environ.copy()
     env['ANSIBLE_ROLES_PATH']    = args.roles_path + ':' + env.get('ANSIBLE_ROLES_PATH', '')
@@ -140,7 +147,7 @@ def main():
     cmd = [
         'ansible-playbook',
         '-i', args.inventory,
-        PLAYBOOK,
+        chosen_playbook,
         '-u', combined['cloud_user'],
         '-e', "@" + args.vars_file,
         '-e', extra_vars

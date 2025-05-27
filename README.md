@@ -1,4 +1,4 @@
-# QE-SAP-TESTING (WIP)
+# qe-sap-testing (WIP)
 
 qe-sap-testing is a sister repository to https://github.com/SUSE/qe-sap-deployment. It uses ansible to run tests on the deployments created by `qe-sap-deployment`. 
 
@@ -33,7 +33,7 @@ After you set the appropriate variables, run the hana_sr_takeover playbook:
 ansible-playbook -i /<deployment_repo_path>/qe-sap-deployment/terraform/<your_csp>/inventory.yaml playbooks/hana_sr_takeover.yml -u <cloud_admin_user> -e "@/<testing_repo_path>/qe-sap-testing/playbooks/vars/all.yml" -e "action=$ACTION node_name=$NODE site_name=$SITE sap_sidadm=$SAP_SIDADM instance_id=$INSTANCE_ID" -vv
 ```
 
-To run the easy way with the script, look at the script description (TBD)
+The qesap_test.py scrit provides an easier interface to run test playbooks. Look at the script description for usage instructions (TBD)
 
 ## Contributing
 
