@@ -1,0 +1,6 @@
+---
+- name: SAP HANA site failure test
+  hosts: "{{ node_name }}"
+  gather_facts: no
+  roles:
+    - hana_prevalidate
